@@ -1,0 +1,76 @@
+---
+globs: *.json
+description: JSON输出格式规范
+---
+
+# JSON输出格式标准
+
+## 月度报告结构 (report_YYYY-MM.json)
+```json
+{
+  "month": "2025-06",
+  "basic_metrics": {
+    "total_dialogues": 1500,
+    "unique_users": 450,
+    "avg_dialogue_length": 125.5,
+    "date_range": {
+      "start": "2025-06-01T00:00:00",
+      "end": "2025-06-30T23:59:59"
+    }
+  },
+  "conversation_themes": {
+    "symptom_management": 300,
+    "emotional_support": 450,
+    "treatment_info": 200,
+    "daily_care": 350,
+    "family_support": 200
+  },
+  "user_journey": {
+    "first_interaction_sentiment": {"positive": 200, "neutral": 150, "negative": 100},
+    "last_interaction_sentiment": {"positive": 250, "neutral": 100, "negative": 100}
+  },
+  "pain_points": [
+    {
+      "indicator": "不知道",
+      "count": 45,
+      "examples": ["不知道这个药物的副作用", "不知道如何护理"]
+    }
+  ],
+  "insights": ["本月用户最关注的问题是：emotional support"],
+  "recommendations": ["建议培训更多心理咨询志愿者"]
+}
+```
+
+## 数据摘要结构 (summary.json)
+```json
+{
+  "total_records": 4500,
+  "date_range": {
+    "start": "2025-06-01T00:00:00",
+    "end": "2025-08-31T23:59:59"
+  },
+  "user_type_distribution": {
+    "patient_family": 3200,
+    "volunteer": 800,
+    "medical_professional": 300,
+    "other": 200
+  },
+  "sentiment_distribution": {
+    "positive": 2000,
+    "neutral": 1500,
+    "negative": 1000
+  },
+  "monthly_counts": {
+    "2025-06": 1500,
+    "2025-07": 1600,
+    "2025-08": 1400
+  }
+}
+```
+
+## JSON保存规范
+- 编码：UTF-8
+- 格式：`ensure_ascii=False, indent=2`
+- 中文字符保持原样显示
+- 数值类型保持正确（int/float）
+- 时间格式：ISO 8601标准

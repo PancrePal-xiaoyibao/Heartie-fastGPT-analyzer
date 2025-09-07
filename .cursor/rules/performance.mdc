@@ -1,0 +1,56 @@
+---
+globs: *.py
+description: 性能优化指南
+---
+
+# 性能优化最佳实践
+
+## 数据处理优化
+```python
+# 优先使用向量化操作
+df['sentiment'] = df['clean_dialogue'].apply(get_sentiment)  # 避免
+df['sentiment'] = df['clean_dialogue'].str.contains('pattern')  # 推荐
+
+# 分块处理大文件
+chunk_size = 10000
+for chunk in pd.read_csv(large_file, chunksize=chunk_size):
+    process_chunk(chunk)
+```
+
+## 内存管理
+- 及时删除不需要的DataFrame：`del df`
+- 使用适当的数据类型：`pd.Categorical`用于重复字符串
+- 避免不必要的数据复制
+
+## 文件I/O优化
+- 批量写入而非逐行写入
+- 使用合适的压缩格式（如需要）
+- 避免重复读取相同文件
+
+## 正则表达式优化
+```python
+# 编译常用正则表达式
+import re
+CLEAN_PATTERN = re.compile(r'[^\w\u4e00-\u9fff]')
+
+def clean_text(text):
+    return CLEAN_PATTERN.sub('', text)
+```
+
+## 并行处理考虑
+- 月度分析可以并行处理不同月份
+- 文本处理可以使用多进程
+- 注意GIL对CPU密集型任务的限制
+
+## 性能监控
+```python
+import time
+start_time = time.time()
+# 处理代码
+print(f"处理耗时: {time.time() - start_time:.2f}秒")
+```
+
+## 缓存策略
+- 预处理结果缓存到磁盘
+- 避免重复计算相同的统计量
+- 使用文件修改时间判断是否需要重新处理

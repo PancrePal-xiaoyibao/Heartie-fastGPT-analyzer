@@ -1,0 +1,39 @@
+---
+globs: *.py
+description: 数据处理模块开发指南
+---
+
+# 数据处理开发规范
+
+## 编码和数据加载
+- 始终处理多种中文编码：utf-8, gbk, gb2312, cp936
+- 使用 `encoding='utf-8', errors='ignore'` 作为容错机制
+- 对CSV文件读取使用异常处理和编码自动检测
+
+## 中文文本处理
+- 列名清洗：移除特殊字符，保留中文和英文字符
+- 正则表达式：`r'[^\w\u4e00-\u9fff]'` 用于清理中文文本
+- 对话内容提取：处理可能的JSON格式嵌套和转义字符
+
+## 时间处理
+- 使用 `pd.to_datetime(errors='coerce')` 进行容错时间解析
+- 生成 `year_month` 周期用于月度分组
+- 默认假设第一列为时间戳
+
+## 用户分类关键词
+```python
+patient_family = ['患者', '病人', '家属', '家人']
+volunteer = ['志愿者', '志愿', '帮助']
+medical_professional = ['医生', '医师', '护士']
+```
+
+## 情感分析关键词
+```python
+positive_words = ['谢谢', '感谢', '帮助', '有用', '好', '棒', '专业']
+negative_words = ['担心', '害怕', '痛苦', '难受', '焦虑', '不好', '没用']
+```
+
+## 数据保存原则
+- 始终使用 UTF-8 编码保存
+- 文件命名格式：`data_YYYY-MM.csv`, `report_YYYY-MM.json`
+- JSON文件使用 `ensure_ascii=False, indent=2` 保持中文可读性

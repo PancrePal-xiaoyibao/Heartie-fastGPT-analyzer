@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+
+# 小馨宝运营分析项目结构指南
+
+这是一个专门用于分析"小馨宝"AI心理支持服务运营数据的Python项目。
+
+## 核心架构
+
+### 主要入口点
+- [run_analysis.py](mdc:run_analysis.py) - 主执行脚本，提供命令行接口
+- [data_preprocessor.py](mdc:data_preprocessor.py) - 数据预处理模块，包含XiaoXinBaoDataProcessor类
+- [monthly_analyzer.py](mdc:monthly_analyzer.py) - 月度分析模块，包含MonthlyAnalyzer类
+
+### 数据流
+1. **原始数据**: filtered_data.csv
+2. **预处理**: XiaoXinBaoDataProcessor 清洗数据、分类用户、情感分析
+3. **按月分割**: 保存到 processed_data/ 目录
+4. **月度分析**: MonthlyAnalyzer 生成深度分析报告
+5. **输出**: JSON格式的分析报告和统计摘要
+
+### 目录结构
+- `processed_data/` - 存放所有处理后的数据和分析报告
+  - `cleaned_data.csv` - 完整清洗数据
+  - `data_YYYY-MM.csv` - 按月分割的数据
+  - `report_YYYY-MM.json` - 月度分析报告
+  - `summary.json` - 整体数据摘要
+
+## 项目特点
+- 专注于中文文本处理和情感分析
+- 采用关键词匹配进行用户分类和主题分析
+- 提供完整的数据分析工作流
+- 生成可操作的业务洞察和改进建议

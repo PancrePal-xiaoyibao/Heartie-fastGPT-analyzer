@@ -1,0 +1,47 @@
+---
+description: 数据处理工作流规范
+---
+
+# 数据处理工作流指南
+
+## 标准执行流程
+1. **数据检查** → 验证 [filtered_data.csv](mdc:filtered_data.csv) 存在
+2. **预处理** → 运行 [data_preprocessor.py](mdc:data_preprocessor.py)
+3. **月度分析** → 运行 [monthly_analyzer.py](mdc:monthly_analyzer.py)
+4. **报告生成** → 输出到 processed_data/ 目录
+
+## 命令行操作
+使用 [run_analysis.py](mdc:run_analysis.py) 作为统一入口：
+```bash
+# 完整流程
+python run_analysis.py --full
+
+# 仅预处理
+python run_analysis.py --preprocess
+
+# 仅月度分析
+python run_analysis.py --analyze-monthly
+```
+
+## 数据依赖关系
+- `filtered_data.csv` → `cleaned_data.csv`
+- `cleaned_data.csv` → `data_YYYY-MM.csv` (按月分割)
+- `data_YYYY-MM.csv` → `report_YYYY-MM.json` (月度分析)
+- 所有月度数据 → `summary.json` (整体摘要)
+
+## 输出文件规范
+- **清洗数据**: `processed_data/cleaned_data.csv`
+- **月度数据**: `processed_data/data_2025-06.csv`
+- **分析报告**: `processed_data/report_2025-06.json`
+- **数据摘要**: `processed_data/summary.json`
+
+## 增量处理策略
+- 新增月份数据时，只需重新运行月度分析
+- 修改分析逻辑时，需要重新处理所有月份数据
+- 优先检查现有输出文件的时间戳，避免重复处理
+
+## 数据备份建议
+在修改处理逻辑前：
+1. 备份 `processed_data/` 目录
+2. 记录当前处理版本
+3. 验证新版本结果的一致性

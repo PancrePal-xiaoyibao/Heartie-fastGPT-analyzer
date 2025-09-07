@@ -1,0 +1,58 @@
+---
+globs: *.py
+---
+
+# Python代码风格规范
+
+## 导入顺序
+```python
+# 标准库导入
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import json
+import re
+import os
+import glob
+
+# 本地模块导入
+from data_preprocessor import XiaoXinBaoDataProcessor
+from monthly_analyzer import MonthlyAnalyzer
+```
+
+## 类和函数命名
+- **类名**：使用PascalCase，如 `XiaoXinBaoDataProcessor`
+- **函数名**：使用snake_case，如 `clean_column_names`
+- **变量名**：使用snake_case，如 `user_type_distribution`
+
+## 文档字符串
+每个函数都应有简洁的中文文档字符串：
+```python
+def extract_dialogue_content(self):
+    """提取对话内容"""
+    # 实现代码
+```
+
+## 中文字符串处理
+- 使用双引号包围中文字符串
+- 关键词列表使用一致的格式
+- 输出信息使用中文，便于业务人员理解
+
+## 错误信息格式
+```python
+print(f"处理文件失败 {file_path}: {e}")
+print(f"缺少文件: {', '.join(missing)}")
+```
+
+## 配置和常量
+将关键配置提取为常量：
+```python
+ENCODING_OPTIONS = ['utf-8', 'gbk', 'gb2312', 'cp936']
+POSITIVE_WORDS = ['谢谢', '感谢', '帮助', '有用', '好', '棒', '专业']
+OUTPUT_DIR = "processed_data"
+```
+
+## 函数长度控制
+- 单个函数不超过50行
+- 复杂逻辑拆分为子函数
+- 保持单一职责原则
