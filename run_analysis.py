@@ -197,10 +197,95 @@ def load_env_key(env_path: str, key: str) -> str:
         return ''
     return ''
 
+def estimate_tokens(text: str) -> int:
+    """粗略估计文本的token数量（中文按字数，英文按词数）"""
+    chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
+    english_words = len(text.replace('\n', ' ').split()) - chinese_chars
+    return chinese_chars + english_words // 3
+
+def split_content_by_tokens(content: str, max_tokens: int) -> list:
+    """按token限制分割内容"""
+    chunks = []
+    lines = content.split('\n')
+    current_chunk = []
+    current_tokens = 0
+    
+    for line in lines:
+        line_tokens = estimate_tokens(line)
+        if current_tokens + line_tokens > max_tokens and current_chunk:
+            chunks.append('\n'.join(current_chunk))
+            current_chunk = [line]
+            current_tokens = line_tokens
+        else:
+            current_chunk.append(line)
+            current_tokens += line_tokens
+    
+    if current_chunk:
+        chunks.append('\n'.join(current_chunk))
+    
+    return chunks
+
 def call_deepseek_chat(api_key: str, system_prompt: str, user_content: str,
                        model: str = 'deepseek-chat', base_url: str = 'https://api.deepseek.com',
-                       timeout_sec: int = 60, stream: bool = False) -> str:
-    """调用 DeepSeek Chat Completions API，返回文本内容。"""
+                       timeout_sec: int = 60, stream: bool = False, max_tokens: int = 0,
+                       chunk_size: int = 0) -> str:
+    """调用 AI Chat Completions API，支持分块处理，返回文本内容。"""
+    
+    # 如果需要分块处理
+    if chunk_size > 0 and estimate_tokens(user_content) > chunk_size:
+        print(f"内容过长({estimate_tokens(user_content)} tokens)，启用分块处理...")
+        chunks = split_content_by_tokens(user_content, chunk_size)
+        print(f"分为 {len(chunks)} 块处理")
+        
+        all_responses = []
+        conversation_history = []
+        
+        for i, chunk in enumerate(chunks, 1):
+            print(f"\n=== 处理第 {i}/{len(chunks)} 块 ===")
+            
+            # 构建对话历史
+            messages = [{'role': 'system', 'content': system_prompt}]
+            messages.extend(conversation_history)
+            
+            # 添加当前块的问题
+            if i == 1:
+                chunk_prompt = f"请分析以下运营数据（第{i}部分，共{len(chunks)}部分）：\n\n{chunk}"
+            else:
+                chunk_prompt = f"继续分析运营数据（第{i}部分，共{len(chunks)}部分）：\n\n{chunk}"
+            
+            messages.append({'role': 'user', 'content': chunk_prompt})
+            
+            # 调用API处理当前块
+            response = _single_api_call(messages, model, base_url, api_key, timeout_sec, stream)
+            all_responses.append(response)
+            
+            # 更新对话历史
+            conversation_history.extend([
+                {'role': 'user', 'content': chunk_prompt},
+                {'role': 'assistant', 'content': response}
+            ])
+        
+        # 最终整合
+        final_prompt = f"基于前面 {len(chunks)} 部分的分析，请生成最终的完整运营分析报告，遵循之前的Markdown格式要求。"
+        messages = [{'role': 'system', 'content': system_prompt}]
+        messages.extend(conversation_history)
+        messages.append({'role': 'user', 'content': final_prompt})
+        
+        print(f"\n=== 生成最终整合报告 ===")
+        final_response = _single_api_call(messages, model, base_url, api_key, timeout_sec, stream)
+        return final_response
+    
+    else:
+        # 单次处理
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_content}
+        ]
+        return _single_api_call(messages, model, base_url, api_key, timeout_sec, stream)
+
+def _single_api_call(messages: list, model: str, base_url: str, api_key: str, 
+                     timeout_sec: int, stream: bool) -> str:
+    """执行单次API调用"""
     # 兼容带/不带v1，自动规范化
     base = base_url.rstrip('/')
     if base.endswith('/v1'):
@@ -208,25 +293,28 @@ def call_deepseek_chat(api_key: str, system_prompt: str, user_content: str,
     else:
         url = f"{base}/chat/completions"
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {api_key}'
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': f'Bearer {api_key}',
+        'Accept': 'application/json; charset=utf-8'
     }
     payload = {
         'model': model,
-        'messages': [
-            { 'role': 'system', 'content': system_prompt },
-            { 'role': 'user', 'content': user_content }
-        ],
+        'messages': messages,
         'stream': bool(stream)
     }
     if stream:
         # 流式打印到终端，同时聚合内容
-        with requests.post(url, headers=headers, data=json.dumps(payload), timeout=timeout_sec, stream=True) as r:
+        with requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=timeout_sec, stream=True) as r:
             r.raise_for_status()
+            r.encoding = 'utf-8'  # 强制设置编码
             full_text_parts: List[str] = []
             for line in r.iter_lines(decode_unicode=True):
                 if not line:
                     continue
+                # 确保line是正确编码的字符串
+                if isinstance(line, bytes):
+                    line = line.decode('utf-8', errors='ignore')
+                
                 if line.startswith('data: '):
                     data_str = line[len('data: '):].strip()
                     if data_str == '[DONE]':
@@ -235,17 +323,32 @@ def call_deepseek_chat(api_key: str, system_prompt: str, user_content: str,
                         obj = json.loads(data_str)
                         delta = obj.get('choices', [{}])[0].get('delta', {}).get('content', '')
                         if delta:
+                            # 确保delta是正确的UTF-8字符串
+                            if isinstance(delta, bytes):
+                                delta = delta.decode('utf-8', errors='ignore')
                             print(delta, end='', flush=True)
                             full_text_parts.append(delta)
-                    except Exception:
+                    except Exception as e:
+                        print(f"\n[DEBUG] JSON解析错误: {e}, 原始数据: {data_str[:100]}")
                         continue
             print()  # 换行
             return ''.join(full_text_parts)
     else:
-        resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=timeout_sec)
+        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=timeout_sec)
         resp.raise_for_status()
-        data = resp.json()
-        return data.get('choices', [{}])[0].get('message', {}).get('content', '')
+        resp.encoding = 'utf-8'  # 强制设置编码
+        
+        try:
+            data = resp.json()
+            content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+            # 确保返回的内容是正确编码
+            if isinstance(content, bytes):
+                content = content.decode('utf-8', errors='ignore')
+            return content
+        except Exception as e:
+            print(f"[DEBUG] 响应解析错误: {e}")
+            print(f"[DEBUG] 原始响应: {resp.text[:200]}")
+            return ""
 
 def full_analysis(input_file: str, processed_dir: str, report_dir: str,
                   *, enable_ai: bool = False,
@@ -290,18 +393,66 @@ def full_analysis(input_file: str, processed_dir: str, report_dir: str,
                 cfg_timeout = int(env_timeout)
         except Exception:
             pass
+        # 新增：支持 LMStudio 本地服务
+        cfg_max_tokens = 0
+        cfg_chunk_size = 0
+        if model and model.lower().startswith('lmstudio'):
+            cfg_base_url = base_url or load_env_key(env_path, 'LMSTUDIO_BASE_URL') or cfg_base_url
+            # 如果模型名是 lmstudio，则从环境变量读取实际模型名
+            if model.lower() == 'lmstudio':
+                env_model = load_env_key(env_path, 'LMSTUDIO_MODEL_NAME')
+                if env_model:
+                    model = env_model
+            api_key = api_key or load_env_key(env_path, 'LMSTUDIO_API_KEY')
+            try:
+                lm_timeout = load_env_key(env_path, 'LMSTUDIO_TIMEOUT_SEC')
+                if lm_timeout:
+                    cfg_timeout = int(lm_timeout)
+            except Exception:
+                pass
+            
+            # 读取token限制配置
+            try:
+                lm_max_tokens = load_env_key(env_path, 'LMSTUDIO_MAX_TOKENS')
+                if lm_max_tokens:
+                    cfg_max_tokens = int(lm_max_tokens)
+                
+                lm_chunk_size = load_env_key(env_path, 'LMSTUDIO_CHUNK_SIZE')
+                if lm_chunk_size:
+                    cfg_chunk_size = int(lm_chunk_size)
+            except Exception:
+                pass
+                
+            print(f"使用 LMStudio 配置: {cfg_base_url}, 模型: {model}")
+            if cfg_max_tokens > 0:
+                print(f"上下文限制: {cfg_max_tokens} tokens, 分块大小: {cfg_chunk_size} tokens")
         if not api_key:
             print("未在环境或 .env 中找到 DEEPSEEK_API_KEY，跳过AI摘要生成。")
             return True
         try:
             ai_text = call_deepseek_chat(api_key, system_prompt, user_content,
                                          model=model, base_url=cfg_base_url,
-                                         timeout_sec=cfg_timeout, stream=stream)
+                                         timeout_sec=cfg_timeout, stream=stream,
+                                         max_tokens=cfg_max_tokens, chunk_size=cfg_chunk_size)
             ai_dir = os.path.dirname(ai_output_path)
             if ai_dir:
                 ensure_dir(ai_dir)
             with open(ai_output_path, 'w', encoding='utf-8') as f:
-                f.write(ai_text or '')
+                # 确保写入文件的内容是正确的UTF-8编码
+                if ai_text:
+                    # 如果内容包含乱码，尝试修复
+                    try:
+                        # 检测并修复可能的编码问题
+                        if isinstance(ai_text, bytes):
+                            ai_text = ai_text.decode('utf-8', errors='ignore')
+                        # 移除可能的控制字符
+                        ai_text = ''.join(char for char in ai_text if ord(char) >= 32 or char in '\n\r\t')
+                        f.write(ai_text)
+                    except Exception as e:
+                        print(f"[WARNING] 文件写入编码错误: {e}")
+                        f.write(str(ai_text))
+                else:
+                    f.write('')
             print(f"AI 摘要报告已生成: {ai_output_path}")
         except Exception as e:
             print(f"DeepSeek API 调用失败: {e}")
@@ -316,12 +467,12 @@ def main():
     parser.add_argument('--output-dir', type=str, default='processed_data', help='预处理输出目录，默认 processed_data')
     parser.add_argument('--report-dir', type=str, default='output', help='Markdown 报告输出目录，默认 output')
     # AI 分析相关
-    parser.add_argument('--ai', action='store_true', help='启用 DeepSeek API 生成运营摘要')
+    parser.add_argument('--ai', action='store_true', help='启用 AI 摘要（DeepSeek 或本地 LMStudio 端点）')
     parser.add_argument('--system-prompt', type=str, default='agent/REPORT_ANALYST_SYSTEM_PROMPT.md', help='系统提示词路径')
     parser.add_argument('--env-file', type=str, default='.env', help='包含 DEEPSEEK_API_KEY 的 .env 文件路径')
     parser.add_argument('--ai-output', type=str, default='output/ops_summary.md', help='AI 摘要输出文件路径')
-    parser.add_argument('--ai-model', type=str, default='deepseek-chat', help='DeepSeek 模型名称，默认 deepseek-chat')
-    parser.add_argument('--ai-base-url', type=str, default=None, help='DeepSeek Base URL，默认从 .env 读取或 https://api.deepseek.com')
+    parser.add_argument('--ai-model', type=str, default='deepseek-chat', help='AI 模型名称，如 deepseek-chat、lmstudio（从环境变量读取）或具体模型名')
+    parser.add_argument('--ai-base-url', type=str, default=None, help='AI Base URL，可指向 DeepSeek 或本地 LMStudio，例如 http://localhost:1234/v1')
     parser.add_argument('--ai-timeout', type=int, default=60, help='DeepSeek 请求超时秒，默认 60，可用 .env 的 DEEPSEEK_TIMEOUT_SEC 覆盖')
     parser.add_argument('--ai-stream', action='store_true', help='启用流式输出，实时打印模型生成内容')
     

@@ -580,6 +580,26 @@ python run_analysis.py --full --ai --ai-stream
 
 # 自定义AI分析参数
 python run_analysis.py --full --ai --ai-model deepseek-chat --ai-timeout 120 --ai-base-url https://api.deepseek.com/v1
+
+# ========================
+# 本地 LMStudio 端点示例
+# ========================
+# 方法1：使用环境变量配置（推荐）
+# 1) 配置 .env 文件：
+#    LMSTUDIO_BASE_URL=http://localhost:1234/v1
+#    LMSTUDIO_MODEL_NAME=deepseek-r1-distill-llama-8b@q8_0
+#    LMSTUDIO_TIMEOUT_SEC=180
+#    LMSTUDIO_MAX_TOKENS=4096      # 模型上下文窗口限制
+#    LMSTUDIO_CHUNK_SIZE=3000      # 分块处理大小（留出输出空间）
+# 2) 运行分析
+python run_analysis.py --full --ai --ai-model lmstudio --ai-stream
+
+# 方法2：命令行直接指定
+python run_analysis.py --full --ai \
+  --ai-model deepseek-r1-distill-llama-8b@q8_0 \
+  --ai-base-url http://localhost:1234/v1 \
+  --ai-timeout 180 \
+  --ai-stream
 ```
 
 ### Python API使用
