@@ -5,6 +5,7 @@ numpy>=1.21.0
 
 # 数据分析和处理
 python-dateutil>=2.8.0
+requests
 
 # JSON处理和序列化
 # (使用Python内置json模块)

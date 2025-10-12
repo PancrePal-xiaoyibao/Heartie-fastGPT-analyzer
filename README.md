@@ -176,9 +176,12 @@ pip install -r requirements.txt
 # 4. 运行完整分析（推荐）
 
 ## 配置llm
-cp env.example env
+cp env.example .env
 ## 运行分析
 python run_analysis.py --full
+# 🤖 启用AI分析（需要配置DeepSeek API）
+python run_analysis.py --full --ai --ai-stream
+
 ```
 
 ### 📖 常用命令速查
