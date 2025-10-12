@@ -174,6 +174,10 @@ pip install -r requirements.txt
 # 将导出的 chat_logs.csv 放在 input/ 目录
 
 # 4. 运行完整分析（推荐）
+
+## 配置llm
+cp env.example env
+## 运行分析
 python run_analysis.py --full
 ```
 
