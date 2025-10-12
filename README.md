@@ -181,6 +181,8 @@ cp env.example .env
 python run_analysis.py --full
 # 🤖 启用AI分析（需要配置DeepSeek API）
 python run_analysis.py --full --ai --ai-stream
+# 🤖 启用AI分析（lmstudio模式，配置具体模型,记得模型配置提供足够的token窗口，推荐8192）
+python run_analysis.py --full --ai --ai-model lmstudio --ai-stream
 
 ```
 

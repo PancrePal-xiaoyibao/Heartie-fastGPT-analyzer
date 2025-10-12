@@ -234,44 +234,61 @@ def call_deepseek_chat(api_key: str, system_prompt: str, user_content: str,
     # 如果需要分块处理
     if chunk_size > 0 and estimate_tokens(user_content) > chunk_size:
         print(f"内容过长({estimate_tokens(user_content)} tokens)，启用分块处理...")
-        chunks = split_content_by_tokens(user_content, chunk_size)
-        print(f"分为 {len(chunks)} 块处理")
+        
+        # 计算 system_prompt 的 token 数
+        system_tokens = estimate_tokens(system_prompt)
+        # 为每块预留空间：system_prompt + 输出空间 + 提示语
+        available_tokens = chunk_size - system_tokens - 500
+        
+        if available_tokens <= 0:
+            print(f"警告：system_prompt 太长({system_tokens} tokens)，使用简化提示")
+            system_prompt = "你是一个专业的运营数据分析师，请分析以下数据并生成报告。"
+            system_tokens = estimate_tokens(system_prompt)
+            available_tokens = chunk_size - system_tokens - 500
+        
+        chunks = split_content_by_tokens(user_content, available_tokens)
+        print(f"分为 {len(chunks)} 块处理（每块约 {available_tokens} tokens）")
         
         all_responses = []
-        conversation_history = []
         
+        # 独立处理每个块，避免对话历史累积
         for i, chunk in enumerate(chunks, 1):
             print(f"\n=== 处理第 {i}/{len(chunks)} 块 ===")
             
-            # 构建对话历史
-            messages = [{'role': 'system', 'content': system_prompt}]
-            messages.extend(conversation_history)
+            # 每个块独立处理，不累积历史
+            chunk_prompt = f"请分析以下运营数据（第{i}部分，共{len(chunks)}部分），提取关键信息和洞察：\n\n{chunk}"
             
-            # 添加当前块的问题
-            if i == 1:
-                chunk_prompt = f"请分析以下运营数据（第{i}部分，共{len(chunks)}部分）：\n\n{chunk}"
-            else:
-                chunk_prompt = f"继续分析运营数据（第{i}部分，共{len(chunks)}部分）：\n\n{chunk}"
-            
-            messages.append({'role': 'user', 'content': chunk_prompt})
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': chunk_prompt}
+            ]
             
             # 调用API处理当前块
             response = _single_api_call(messages, model, base_url, api_key, timeout_sec, stream)
             all_responses.append(response)
-            
-            # 更新对话历史
-            conversation_history.extend([
-                {'role': 'user', 'content': chunk_prompt},
-                {'role': 'assistant', 'content': response}
-            ])
         
-        # 最终整合
-        final_prompt = f"基于前面 {len(chunks)} 部分的分析，请生成最终的完整运营分析报告，遵循之前的Markdown格式要求。"
-        messages = [{'role': 'system', 'content': system_prompt}]
-        messages.extend(conversation_history)
-        messages.append({'role': 'user', 'content': final_prompt})
+        # 整合所有块的分析结果
+        print(f"\n=== 整合 {len(chunks)} 个分析结果 ===")
+        combined_analysis = "\n\n---\n\n".join([f"## 第{i}部分分析\n{resp}" for i, resp in enumerate(all_responses, 1)])
         
-        print(f"\n=== 生成最终整合报告 ===")
+        # 生成最终报告（使用整合后的分析结果）
+        final_prompt = f"基于以下各部分的分析结果，生成一份完整的运营分析报告（Markdown格式）：\n\n{combined_analysis}"
+        
+        # 检查最终提示是否也太长
+        if estimate_tokens(final_prompt) > available_tokens:
+            print(f"警告：整合结果太长，使用摘要方式")
+            # 只保留关键摘要
+            summaries = []
+            for i, resp in enumerate(all_responses, 1):
+                summary_lines = resp.split('\n')[:10]  # 只取前10行
+                summaries.append(f"第{i}部分摘要：\n" + '\n'.join(summary_lines))
+            final_prompt = f"基于以下摘要，生成完整的运营分析报告：\n\n" + "\n\n".join(summaries)
+        
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': final_prompt}
+        ]
+        
         final_response = _single_api_call(messages, model, base_url, api_key, timeout_sec, stream)
         return final_response
     
@@ -291,7 +308,7 @@ def _single_api_call(messages: list, model: str, base_url: str, api_key: str,
     if base.endswith('/v1'):
         url = f"{base}/chat/completions"
     else:
-        url = f"{base}/chat/completions"
+        url = f"{base}/v1/chat/completions"
     headers = {
         'Content-Type': 'application/json; charset=utf-8',
         'Authorization': f'Bearer {api_key}',
@@ -304,7 +321,7 @@ def _single_api_call(messages: list, model: str, base_url: str, api_key: str,
     }
     if stream:
         # 流式打印到终端，同时聚合内容
-        with requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=timeout_sec, stream=True) as r:
+        with requests.post(url, headers=headers, json=payload, timeout=timeout_sec, stream=True) as r:
             r.raise_for_status()
             r.encoding = 'utf-8'  # 强制设置编码
             full_text_parts: List[str] = []
@@ -334,7 +351,7 @@ def _single_api_call(messages: list, model: str, base_url: str, api_key: str,
             print()  # 换行
             return ''.join(full_text_parts)
     else:
-        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=timeout_sec)
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
         resp.raise_for_status()
         resp.encoding = 'utf-8'  # 强制设置编码
         
@@ -426,7 +443,8 @@ def full_analysis(input_file: str, processed_dir: str, report_dir: str,
             print(f"使用 LMStudio 配置: {cfg_base_url}, 模型: {model}")
             if cfg_max_tokens > 0:
                 print(f"上下文限制: {cfg_max_tokens} tokens, 分块大小: {cfg_chunk_size} tokens")
-        if not api_key:
+        # 检查是否有有效的API配置（DeepSeek或LMStudio）
+        if not api_key and not (model and model.lower().startswith('lmstudio')):
             print("未在环境或 .env 中找到 DEEPSEEK_API_KEY，跳过AI摘要生成。")
             return True
         try:
