@@ -225,7 +225,26 @@ python unit_tests.py
 
 本系统支持通过修改配置文件来快速适配不同行业，无需修改核心代码：
 
-#### 1. 用户分类关键词配置
+> v0.3 起，推荐通过 .env 配置关键词（无需修改代码）。下述代码级示例仍可作为参考。
+
+#### 1A. 通过 .env 配置关键词（推荐，自 v0.3）
+
+```bash
+# 用户分类（JSON 优先）
+USER_CATEGORY_KEYWORDS={"patient_family":["患者","病人","家属","家人"],"volunteer":["志愿者","志愿","帮助"],"medical_professional":["医生","医师","护士"]}
+# 或逗号分隔：PATIENT_KEYWORDS / VOLUNTEER_KEYWORDS / MEDICAL_KEYWORDS
+
+# 情感词库（JSON 优先）
+SENTIMENT_WORDS={"positive":["谢谢","感谢","帮助"],"negative":["担心","害怕","痛苦"],"neutral":["咨询","询问","了解"]}
+# 或逗号分隔：POSITIVE_WORDS / NEGATIVE_WORDS / NEUTRAL_WORDS
+
+# 主题识别（JSON）
+CONVERSATION_THEMES={"symptom_management":["症状","疼痛"],"emotional_support":["担心","害怕"],"treatment_info":["治疗","用药"]}
+```
+
+程序读取顺序：JSON 环境变量 > 逗号分隔环境变量 > 代码内置默认。
+
+#### 1B. 用户分类关键词配置（代码级示例）
 
 ```python
 # 在 data_preprocessor.py 中修改以下关键词列表
@@ -606,9 +625,9 @@ python run_analysis.py --full --ai --ai-model deepseek-chat --ai-timeout 120 --a
 # 2) 运行分析
 python run_analysis.py --full --ai --ai-model lmstudio --ai-stream
 
-# 方法2：命令行直接指定
+# 方法2：命令行直接指定（示例模型：deepseek-r1-distill-qwen-7b）
 python run_analysis.py --full --ai \
-  --ai-model deepseek-r1-distill-llama-8b@q8_0 \
+  --ai-model deepseek-r1-distill-qwen-7b \
   --ai-base-url http://localhost:1234/v1 \
   --ai-timeout 180 \
   --ai-stream
@@ -1683,6 +1702,17 @@ git push origin v1.2.0
 ### Deprecated
 - 旧版本的配置文件格式将在下一版本移除
 ```
+
+## 🆕 版本更新 v0.3（2025-10-30）
+
+- 新增：.env 驱动的关键词配置（无需改代码）
+  - `USER_CATEGORY_KEYWORDS`、`SENTIMENT_WORDS`、`CONVERSATION_THEMES` 支持 JSON；并支持逗号分隔备用变量
+  - 读取优先级：JSON > 逗号分隔 > 内置默认
+- 新增：`env.example` 提供“乳腺癌/小粉宝”模板分析示例配置（LMStudio + deepseek-r1-distill-qwen-7b）
+- 新增：数据隐私默认保护
+  - `.gitignore` 忽略 `input/`、`processed_data/`、`.env`、常见数据文件（.csv/.xlsx/.json 等）
+- 更新：README 的 LMStudio 示例统一为 `deepseek-r1-distill-qwen-7b`
+- 优化：`data_preprocessor.py` 与 `monthly_analyzer.py` 支持从 .env 加载关键词和主题映射，保持完全向后兼容
 
 ---
 
