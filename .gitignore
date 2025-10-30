@@ -1,0 +1,43 @@
+# Sensitive data directories
+input/
+processed_data/
+
+# Environment files
+.env
+*.env
+.env.*
+
+# Local artifacts and data files
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.json
+!package.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Cache/build
+.dist/
+dist/
+build/
+*.egg-info/
+

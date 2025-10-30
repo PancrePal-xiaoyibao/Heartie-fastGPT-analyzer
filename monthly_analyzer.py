@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 import re
 from collections import Counter
+import os
 
 def convert_numpy_types(obj):
     """转换numpy类型为Python原生类型，用于JSON序列化"""
@@ -119,14 +120,25 @@ class MonthlyAnalyzer:
 
     def conversation_analysis(self):
         """对话主题分析"""
-        # 定义主题关键词
-        themes = {
-            'symptom_management': ['症状', '疼痛', '难受', '副作用', '化疗', '放疗'],
-            'emotional_support': ['担心', '害怕', '焦虑', '支持', '陪伴', '心理'],
-            'treatment_info': ['治疗', '方案', '药物', '医院', '医生', '检查'],
-            'daily_care': ['饮食', '休息', '运动', '护理', '生活', '建议'],
-            'family_support': ['家属', '家人', '照顾', '帮助', '陪伴', '支持']
-        }
+        # 定义主题关键词（支持 .env 中 JSON 覆盖）
+        themes_env = os.getenv('CONVERSATION_THEMES', '').strip()
+        themes = None
+        if themes_env:
+            try:
+                data = json.loads(themes_env)
+                if isinstance(data, dict):
+                    # 确保所有值为列表
+                    themes = {str(k): list(v) for k, v in data.items()}
+            except Exception:
+                pass
+        if themes is None:
+            themes = {
+                'symptom_management': ['症状', '疼痛', '难受', '副作用', '化疗', '放疗'],
+                'emotional_support': ['担心', '害怕', '焦虑', '支持', '陪伴', '心理'],
+                'treatment_info': ['治疗', '方案', '药物', '医院', '医生', '检查'],
+                'daily_care': ['饮食', '休息', '运动', '护理', '生活', '建议'],
+                'family_support': ['家属', '家人', '照顾', '帮助', '陪伴', '支持']
+            }
         
         theme_counts = {}
         for theme, keywords in themes.items():

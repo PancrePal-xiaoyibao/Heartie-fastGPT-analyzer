@@ -164,8 +164,8 @@
 git clone <repository-url>
 cd 小馨宝运营分析
 
-conda create -n Heartie-fastGPT-analyzer python=3.11
-conda activate Heartie-fastGPT-analyzer
+conda create -n fast-GPT-analyzer python=3.11
+conda activate fast-GPT-analyzer
 
 # 2. 安装依赖
 pip install -r requirements.txt

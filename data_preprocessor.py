@@ -3,6 +3,15 @@ import numpy as np
 from datetime import datetime
 import json
 import re
+import os
+
+try:
+    # 允许通过 .env 覆盖关键词配置
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    # 可选依赖，不存在时忽略
+    pass
 
 class XiaoXinBaoDataProcessor:
     def __init__(self, file_path):
@@ -149,14 +158,44 @@ class XiaoXinBaoDataProcessor:
     
     def categorize_users(self):
         """用户分类"""
+        # 从环境变量读取用户分类关键词，优先 JSON，其次逗号分隔列表，最后使用内置默认值
+        def load_user_keywords():
+            # JSON 结构：{"patient_family": [...], "volunteer": [...], "medical_professional": [...]}
+            json_str = os.getenv('USER_CATEGORY_KEYWORDS', '').strip()
+            if json_str:
+                try:
+                    data = json.loads(json_str)
+                    # 基本校验
+                    if isinstance(data, dict):
+                        return {
+                            'patient_family': list(data.get('patient_family', [])),
+                            'volunteer': list(data.get('volunteer', [])),
+                            'medical_professional': list(data.get('medical_professional', [])),
+                        }
+                except Exception:
+                    pass
+            # 兼容逗号分隔的独立变量
+            def split_list(value):
+                if not value:
+                    return []
+                # 支持中文逗号、顿号
+                parts = [p.strip() for p in re.split(r'[，,、]', value) if p.strip()]
+                return parts
+            return {
+                'patient_family': split_list(os.getenv('PATIENT_KEYWORDS', '')) or ['患者', '病人', '家属', '家人', '老公', '老婆', '妈妈', '爸爸', '儿子', '女儿', '确诊', '化疗', '放疗', '手术', '癌症', '肿瘤', '检查', '治疗'],
+                'volunteer': split_list(os.getenv('VOLUNTEER_KEYWORDS', '')) or ['志愿者', '志愿', '帮助', '陪伴', '支持', '倾听', '服务', '援助'],
+                'medical_professional': split_list(os.getenv('MEDICAL_KEYWORDS', '')) or ['医生', '医师', '护士', '专业', '医疗', '临床', '诊断', '用药', '医院'],
+            }
+
+        user_keywords = load_user_keywords()
+
         def classify_user(dialogue):
             dialogue_str = str(dialogue)
             
-            # 扩展关键词匹配
-            patient_keywords = ['患者', '病人', '家属', '家人', '老公', '老婆', '妈妈', '爸爸', '儿子', '女儿', 
-                              '确诊', '化疗', '放疗', '手术', '癌症', '肿瘤', '检查', '治疗']
-            volunteer_keywords = ['志愿者', '志愿', '帮助', '陪伴', '支持', '倾听', '服务', '援助']
-            medical_keywords = ['医生', '医师', '护士', '专业', '医疗', '临床', '诊断', '用药', '医院']
+            # 关键词匹配（支持 .env 覆盖）
+            patient_keywords = user_keywords.get('patient_family', [])
+            volunteer_keywords = user_keywords.get('volunteer', [])
+            medical_keywords = user_keywords.get('medical_professional', [])
             
             # 计算匹配度
             patient_score = sum(1 for word in patient_keywords if word in dialogue_str)
@@ -180,15 +219,39 @@ class XiaoXinBaoDataProcessor:
     
     def analyze_sentiment(self):
         """情感分析"""
+        # 从环境变量读取情感词库，优先 JSON，其次逗号分隔，最后默认
+        def load_sentiment_words():
+            # JSON 结构：{"positive": [...], "negative": [...], "neutral": [...]}
+            json_str = os.getenv('SENTIMENT_WORDS', '').strip()
+            if json_str:
+                try:
+                    data = json.loads(json_str)
+                    if isinstance(data, dict):
+                        return (
+                            list(data.get('positive', [])),
+                            list(data.get('negative', [])),
+                            list(data.get('neutral', [])),
+                        )
+                except Exception:
+                    pass
+            def split_list(value):
+                if not value:
+                    return []
+                return [p.strip() for p in re.split(r'[，,、]', value) if p.strip()]
+            positive = split_list(os.getenv('POSITIVE_WORDS', '')) or ['谢谢', '感谢', '帮助', '有用', '好', '棒', '专业', '安慰', '支持', '鼓励', '温暖', '理解', '陪伴', '放心', '舒服', '开心', '满意', '赞']
+            negative = split_list(os.getenv('NEGATIVE_WORDS', '')) or ['担心', '害怕', '痛苦', '难受', '焦虑', '不好', '没用', '绝望', '沮丧', '恐惧', '抑郁', '烦躁', '失望', '无助', '孤独', '崩溃', '压抑']
+            neutral = split_list(os.getenv('NEUTRAL_WORDS', '')) or ['咨询', '询问', '了解', '知道', '请教', '想问', '如何', '什么', '怎么']
+            return (positive, negative, neutral)
+
+        positive_words_default, negative_words_default, neutral_words_default = load_sentiment_words()
+
         def get_sentiment(text):
             text_str = str(text)
             
-            # 扩展情感词汇
-            positive_words = ['谢谢', '感谢', '帮助', '有用', '好', '棒', '专业', '安慰', '支持', 
-                            '鼓励', '温暖', '理解', '陪伴', '放心', '舒服', '开心', '满意', '赞']
-            negative_words = ['担心', '害怕', '痛苦', '难受', '焦虑', '不好', '没用', '绝望', 
-                            '沮丧', '恐惧', '抑郁', '烦躁', '失望', '无助', '孤独', '崩溃', '压抑']
-            neutral_words = ['咨询', '询问', '了解', '知道', '请教', '想问', '如何', '什么', '怎么']
+            # 情感词汇（支持 .env 覆盖）
+            positive_words = positive_words_default
+            negative_words = negative_words_default
+            neutral_words = neutral_words_default
             
             # 计算情感得分
             positive_score = sum(1 for word in positive_words if word in text_str)
