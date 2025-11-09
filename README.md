@@ -161,7 +161,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
+git clone https://github.com/PancrePal-xiaoyibao/Heartie-fastGPT-analyzer.git
 cd 小馨宝运营分析
 
 conda create -n fast-GPT-analyzer python=3.11
