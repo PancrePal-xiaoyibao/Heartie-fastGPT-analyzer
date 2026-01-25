@@ -21,6 +21,11 @@ import requests
 from typing import List, Dict
 from data_preprocessor import XiaoXinBaoDataProcessor
 from monthly_analyzer import process_all_months
+# 尝试导入 LogParser，假设在同级目录
+try:
+    from log_parser import LogParser
+except ImportError:
+    LogParser = None
 
 def resolve_input_file(cli_input: str = None) -> str:
     """解析输入文件路径，优先顺序：
@@ -43,6 +48,10 @@ def resolve_input_file(cli_input: str = None) -> str:
         return 'chat_logs.csv'
     if os.path.exists('filtered_data.csv'):
         return 'filtered_data.csv'
+        
+    # Check for log files
+    if os.path.exists('input/xyanb.yaml'):
+        return 'input/xyanb.yaml'
     
     return ''
 
@@ -50,12 +59,31 @@ def ensure_dir(path: str) -> None:
     if path and not os.path.exists(path):
         os.makedirs(path, exist_ok=True)
 
-def preprocess_data(input_file: str, output_dir: str) -> bool:
+def preprocess_data(input_file: str, output_dir: str, output_format: str = 'csv') -> bool:
     """数据预处理"""
     print("=== 开始数据预处理 ===")
     if not input_file or not os.path.exists(input_file):
-        print("未找到输入文件。请在 input/ 目录放置 chat_logs.csv 或使用 --input-file 指定。")
+        print("未找到输入文件。请在 input/ 目录放置 chat_logs.csv 或 use --input-file 指定。")
         return False
+        
+    # Check if input is a log file (.yaml or .log)
+    if input_file.endswith('.yaml') or input_file.endswith('.log'):
+        print(f"检测到日志文件: {input_file}，尝试解析...")
+        if LogParser:
+            parser = LogParser(input_file)
+            df = parser.parse()
+            if df.empty:
+                print("日志解析结果为空")
+                return False
+            # Save parsed DataFrame as CSV (standard format for processor)
+            parsed_csv = 'input/chat_logs.csv'
+            df.to_csv(parsed_csv, index=False, encoding='utf-8')
+            print(f"日志已解析并保存为标准CSV输入: {parsed_csv}")
+            input_file = parsed_csv # Switch input to the CSV file
+        else:
+            print("错误: 找不到 LogParser 模块，无法解析日志文件")
+            return False
+
     processor = XiaoXinBaoDataProcessor(input_file)
     
     if processor.load_data():
@@ -79,7 +107,7 @@ def preprocess_data(input_file: str, output_dir: str) -> bool:
         
         # 保存处理结果
         ensure_dir(output_dir)
-        summary = processor.save_processed_data(output_dir)
+        summary = processor.save_processed_data(output_dir, format=output_format)
         print("\n=== 处理完成 ===")
         print("摘要统计:")
         for key, value in summary.items():
@@ -338,13 +366,17 @@ def _single_api_call(messages: list, model: str, base_url: str, api_key: str,
                         break
                     try:
                         obj = json.loads(data_str)
-                        delta = obj.get('choices', [{}])[0].get('delta', {}).get('content', '')
-                        if delta:
-                            # 确保delta是正确的UTF-8字符串
-                            if isinstance(delta, bytes):
-                                delta = delta.decode('utf-8', errors='ignore')
-                            print(delta, end='', flush=True)
-                            full_text_parts.append(delta)
+                        if isinstance(obj, dict):
+                             delta = obj.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                             if delta:
+                                 # 确保delta是正确的UTF-8字符串
+                                 if isinstance(delta, bytes):
+                                     delta = delta.decode('utf-8', errors='ignore')
+                                 print(delta, end='', flush=True)
+                                 full_text_parts.append(delta)
+                        else:
+                             # 非标准 JSON 响应 (可能是 LMStudio 的纯文本信息)
+                             print(f"\n[DEBUG] 非标准响应对象: {type(obj)} - {str(obj)[:100]}")
                     except Exception as e:
                         print(f"\n[DEBUG] JSON解析错误: {e}, 原始数据: {data_str[:100]}")
                         continue
@@ -375,10 +407,11 @@ def full_analysis(input_file: str, processed_dir: str, report_dir: str,
                   model: str = 'deepseek-chat',
                   base_url: str = '',
                   timeout_sec: int = 60,
-                  stream: bool = True) -> bool:
+                  stream: bool = True,
+                  output_format: str = 'csv') -> bool:
     """完整分析流程，含 Markdown 报告输出。"""
     print("=== 开始完整分析流程 ===")
-    ok = preprocess_data(input_file, processed_dir)
+    ok = preprocess_data(input_file, processed_dir, output_format=output_format)
     if not ok:
         return False
     reports = run_monthly_analysis(processed_dir)
@@ -483,6 +516,7 @@ def main():
     parser.add_argument('--full', action='store_true', help='完整流程')
     parser.add_argument('--input-file', type=str, default=None, help='输入CSV，默认自动查找 input/chat_logs.csv 或 input/filtered_data.csv')
     parser.add_argument('--output-dir', type=str, default='processed_data', help='预处理输出目录，默认 processed_data')
+    parser.add_argument('--output-format', type=str, default='csv', choices=['csv', 'yaml'], help='输出格式 (csv/yaml)')
     parser.add_argument('--report-dir', type=str, default='output', help='Markdown 报告输出目录，默认 output')
     # AI 分析相关
     parser.add_argument('--ai', action='store_true', help='启用 AI 摘要（DeepSeek 或本地 LMStudio 端点）')
@@ -509,9 +543,10 @@ def main():
                       model=args.ai_model,
                       base_url=(args.ai_base_url or ''),
                       timeout_sec=args.ai_timeout,
-                      stream=args.ai_stream)
+                      stream=args.ai_stream,
+                      output_format=args.output_format)
     elif args.preprocess:
-        preprocess_data(input_file, processed_dir)
+        preprocess_data(input_file, processed_dir, output_format=args.output_format)
     elif args.analyze_monthly:
         run_monthly_analysis(processed_dir)
     elif args.full:
@@ -523,7 +558,8 @@ def main():
                       model=args.ai_model,
                       base_url=(args.ai_base_url or ''),
                       timeout_sec=args.ai_timeout,
-                      stream=args.ai_stream)
+                      stream=args.ai_stream,
+                      output_format=args.output_format)
 
 if __name__ == "__main__":
     main()

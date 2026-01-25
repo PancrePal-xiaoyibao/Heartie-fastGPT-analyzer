@@ -3,7 +3,12 @@ import numpy as np
 from datetime import datetime
 import json
 import re
+import re
 import os
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 try:
     # 允许通过 .env 覆盖关键词配置
@@ -47,6 +52,11 @@ class XiaoXinBaoDataProcessor:
     
     def clean_column_names(self):
         """清理和标准化列名"""
+        # 如果已经是解析后的日志格式，跳过重命名
+        if 'dialogue_content' in self.df.columns and 'timestamp' in self.df.columns:
+            print("检测到已解析的日志格式，跳过列重命名")
+            return self.df.columns.tolist()
+
         # 修复乱码列名，提供标准化的列名映射
         original_columns = self.df.columns.tolist()
         
@@ -216,6 +226,65 @@ class XiaoXinBaoDataProcessor:
         user_distribution = self.df['user_type'].value_counts().to_dict()
         print(f"用户类型分布: {user_distribution}")
         return user_distribution
+
+    def load_breast_cancer_config(self):
+        """加载乳腺癌分析专用配置"""
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'breast_cancer_analyz_config.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"加载配置文件失败: {e}")
+        return None
+
+    def categorize_topics(self):
+        """按话题分类 (优选.env配置, 其次JSON)"""
+        topics = {}
+        
+        # 1. 尝试从环境变量读取 (COMPATIBILITY with monthly_analyzer)
+        themes_env = os.getenv('CONVERSATION_THEMES', '').strip()
+        if themes_env:
+            try:
+                data = json.loads(themes_env)
+                if isinstance(data, dict):
+                    topics = {str(k): list(v) for k, v in data.items()}
+            except Exception:
+                pass
+        
+        # 2. 如果环境变量未设置，尝试读取 JSON 配置文件
+        if not topics:
+            config = self.load_breast_cancer_config()
+            if config and 'topics' in config:
+                topics = config['topics']
+        
+        if not topics:
+            print("未找到话题配置(.env CONVERSATION_THEMES 或 JSON)，跳过话题分类")
+            return {}
+        
+        def get_topic(text):
+            text_str = str(text)
+            matched_topics = []
+            for topic, keywords in topics.items():
+                if any(keyword in text_str for keyword in keywords):
+                    matched_topics.append(topic)
+            
+            if not matched_topics:
+                return 'other'
+            return ','.join(matched_topics) # Allow multi-label or just pick first? Picking join for now.
+
+        self.df['topics'] = self.df['clean_dialogue'].apply(get_topic)
+        
+        # Split multi-label for counting
+        all_topics = []
+        for t in self.df['topics']:
+            if t:
+                all_topics.extend(t.split(','))
+        
+        from collections import Counter
+        topic_distribution = dict(Counter(all_topics))
+        print(f"话题分布: {topic_distribution}")
+        return topic_distribution
     
     def analyze_sentiment(self):
         """情感分析"""
@@ -280,13 +349,32 @@ class XiaoXinBaoDataProcessor:
             monthly_data[str(month)] = group
         return monthly_data
     
-    def save_processed_data(self, output_dir):
+    def save_processed_data(self, output_dir, format='csv'):
         """保存处理后的数据"""
         import os
         os.makedirs(output_dir, exist_ok=True)
         
         # 保存完整清洗数据
-        self.df.to_csv(f"{output_dir}/cleaned_data.csv", index=False, encoding='utf-8')
+        if format == 'yaml':
+            # Convert DF to list of dicts for YAML dump
+            data_dict = self.df.to_dict(orient='records')
+            # Handle timestamps for YAML serialization
+            for row in data_dict:
+                for k, v in row.items():
+                    if pd.isna(v):
+                        row[k] = None
+                    elif hasattr(v, 'isoformat'):
+                        row[k] = v.isoformat()
+            
+            output_file = f"{output_dir}/cleaned_data.yaml"
+            if yaml:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    yaml.dump(data_dict, f, allow_unicode=True, sort_keys=False)
+                print(f"已保存 YAML 数据: {output_file}")
+            else:
+                print("未安装 PyYAML，无法保存为 YAML 格式。")
+        else:
+            self.df.to_csv(f"{output_dir}/cleaned_data.csv", index=False, encoding='utf-8')
         
         # 按月份分割保存
         monthly_data = self.split_by_month()
@@ -304,11 +392,16 @@ class XiaoXinBaoDataProcessor:
             },
             'user_type_distribution': self.categorize_users(),
             'sentiment_distribution': self.analyze_sentiment(),
+            'topic_distribution': self.categorize_topics(), # Added
             'monthly_counts': {str(k): len(v) for k, v in monthly_data.items()}
         }
         
         with open(f"{output_dir}/summary.json", 'w', encoding='utf-8') as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
+            
+        if format == 'yaml' and yaml:
+             with open(f"{output_dir}/summary.yaml", 'w', encoding='utf-8') as f:
+                yaml.dump(summary, f, allow_unicode=True, sort_keys=False)
         
         return summary
 

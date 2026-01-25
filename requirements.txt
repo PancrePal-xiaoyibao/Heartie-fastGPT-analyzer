@@ -1,24 +1,7 @@
-# 小馨宝运营分析系统 - 依赖包
-# 核心数据处理
+
+# Data Analysis and Processing
 pandas>=1.3.0
 numpy>=1.21.0
-
-# 数据分析和处理
 python-dateutil>=2.8.0
 requests
-
-# JSON处理和序列化
-# (使用Python内置json模块)
-
-# 正则表达式处理
-# (使用Python内置re模块)
-
-# 文件和路径操作
-# (使用Python内置os, pathlib模块)
-
-# 开发和测试依赖 (可选)
-# 取消注释以下行来安装开发依赖
-# pytest>=6.0.0
-# pylint>=2.10.0
-# black>=21.0.0
-# mypy>=0.910
+PyYAML>=6.0
