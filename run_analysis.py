@@ -26,6 +26,10 @@ try:
     from log_parser import LogParser
 except ImportError:
     LogParser = None
+try:
+    from visualizer import generate_all_plots
+except ImportError:
+    generate_all_plots = None
 
 def resolve_input_file(cli_input: str = None) -> str:
     """解析输入文件路径，优先顺序：
@@ -417,6 +421,16 @@ def full_analysis(input_file: str, processed_dir: str, report_dir: str,
     reports = run_monthly_analysis(processed_dir)
     if not reports:
         return False
+    
+    # 3. 生成可视化图表
+    if generate_all_plots:
+        try:
+            generate_all_plots(processed_dir, report_dir)
+        except Exception as e:
+            print(f"可视化生成失败: {e}")
+    else:
+         print("Warning: visualizer module not found, skipping plots.")
+
     ensure_dir(report_dir)
     md_text = render_markdown_report(reports, os.path.join(processed_dir, 'summary.json'))
     report_path = os.path.join(report_dir, 'analysis_report.md')
