@@ -2,6 +2,7 @@
 input/
 processed_data/
 output/
+
 # Environment files
 .env
 *.env
@@ -41,4 +42,5 @@ dist/
 build/
 *.egg-info/
 
+.env
 .env
